@@ -49,3 +49,26 @@ No autonomous web fetch in v0.1. UI creates prepared query from a question. User
 ## Frontend behavior
 
 No sample data in a new installation; optional explicit example project button. New session uses crypto.randomUUID and timestamps, added by project PUT. Every change is saved to API, statuses Saving/Saved only after confirmation. Drag persisted onDragStop. Undo bounded session snapshots through project PUT. HTTP409 retains edits and offers reload/export. Import real text routes to /segments; importedJSON routes to /projects/import. Actual JSON/Markdown downloads derived from project/session state. Settings show device access state accurately, mic and speaker separate; capture requires speech_available. Rejected cards retained internally and filtered from board. Session review derived from current data.
+
+## Govern notebook extension
+
+`GET /api/govern/recordings` returns `{configured,recordings}` through the server-only
+Govern feed connection. Unconfigured returns an empty list and `configured:false`;
+configured but unavailable/unauthorized returns an explicit adapter error.
+`POST /api/projects/{project_id}/govern/{recording_id:uuid}` requires the normal
+GhostSketch token, imports a complete ready transcript and returns the existing
+import envelope. A repeated import opens the same page and deduplicates fragments
+by connection/recording checksum/fragment identity. It never rewrites edited notes.
+The server validates recording identity, sequence, timeline, content and response
+size; no audio or SQL is fetched. The fixed `.env` address must be loopback HTTP
+with path `/dictation-feed.php`; redirects and environment proxies are disabled.
+
+Session adds `section:string='Algemeen'`, `page_text:string=''` (100,000 characters),
+`strokes:Stroke[]=[]` (500), `govern_recording:string|null=null`, and source `govern`.
+Stroke is `{id,points:[{x,y}]}` with 2–2000 finite points using existing Position
+bounds. Segment adds origin `govern` and optional `govern_source` with connection,
+recording_id, segment_id and audio_sha256. PUT preserves immutable linked originals;
+corrections belong in page_text. Project revision conflicts apply to all page/ink
+edits. JSON export/import rekeys stroke IDs and preserves external provenance.
+The existing 7 MiB project limit remains in force. The first version imports on
+explicit selection, not background polling. Browser/API numeric types are numbers.

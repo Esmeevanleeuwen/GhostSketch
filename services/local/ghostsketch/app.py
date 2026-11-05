@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+from uuid import UUID
 import logging
 import secrets
 import threading
@@ -14,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 from typing import Annotated
 
+from .govern import GovernSource
 from . import __version__
 from .adapters import AdapterError, LocalAdapters, MAX_UPLOAD_BYTES
 from .models import AudioInput, Card, Identifier, NewProject, Project, SaveProject, Settings, TextInput
@@ -41,12 +44,13 @@ def _safe_origin(origin: str, host: str):
         return False
 
 
-def create_app(data_dir=None, adapters=None, frontend_dir=None) -> FastAPI:
+def create_app(data_dir=None, adapters=None, frontend_dir=None, govern=None) -> FastAPI:
     store = Store(data_dir or default_data_dir())
     local = adapters if adapters is not None else LocalAdapters(
         os.environ.get("GHOSTSKETCH_OLLAMA_URL", "http://127.0.0.1:11434"),
         os.environ.get("GHOSTSKETCH_WHISPER_URL", "http://127.0.0.1:8081") or None,
     )
+    source = govern if govern is not None else GovernSource()
     app = FastAPI(title="GhostSketch lokaal", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store, app.state.adapters = store, local
     app.state.token = secrets.token_urlsafe(32)
@@ -140,10 +144,10 @@ def create_app(data_dir=None, adapters=None, frontend_dir=None) -> FastAPI:
     def envelope(project, session_id, organizer, warnings):
         return {"project": project, "session_id": session_id, "organizer": organizer, "warnings": warnings}
 
-    def ingest(session_id, body: TextInput, origin):
+    def ingest(session_id, body: TextInput, origin, govern_source=None):
         with locks[hash(session_id) % len(locks)]:
             settings = store.settings()
-            project, segment, done = store.reserve_segment(session_id, body, origin, settings.organizer)
+            project, segment, done = store.reserve_segment(session_id, body, origin, settings.organizer, govern_source)
             if done:
                 previous = store.outcome(session_id, body.request_id)
                 if previous:
@@ -173,6 +177,28 @@ def create_app(data_dir=None, adapters=None, frontend_dir=None) -> FastAPI:
                 candidates = []
             project, warnings = store.complete_segment(session_id, segment.id, body.request_id, candidates, warnings)
             return envelope(project, session_id, settings.organizer, warnings)
+
+    @app.get("/api/govern/recordings")
+    def govern_recordings():
+        return {"configured": source.configured, "recordings": source.read() if source.configured else []}
+
+    @app.post("/api/projects/{project_id}/govern/{recording_id}")
+    def import_govern(project_id: Identifier, recording_id: UUID):
+        store.get(project_id)
+        transcript = source.read(recording_id)
+        identity = source.identity + "#" + str(transcript.id) + ":" + transcript.sha256
+        page_id = store.govern_page(project_id, identity, transcript.filename)
+        warnings = []
+        for fragment in transcript.segments:
+            if not fragment.text.strip():
+                continue
+            request_id = hashlib.sha256((identity + ":" + str(fragment.sequence)).encode()).hexdigest()
+            result = ingest(page_id, AudioInput(text=fragment.text, request_id=request_id,
+                start_ms=fragment.start_ms, end_ms=fragment.end_ms), "govern", {
+                    "connection": source.identity, "recording_id": str(transcript.id),
+                    "segment_id": str(fragment.id), "audio_sha256": transcript.sha256})
+            warnings.extend(result["warnings"])
+        return envelope(store.get(project_id), page_id, store.settings().organizer, list(dict.fromkeys(warnings)))
 
     @app.post("/api/sessions/{session_id}/segments")
     def add_segment(session_id: Identifier, body: TextInput):

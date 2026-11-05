@@ -52,6 +52,35 @@ npm run dev
 
 Open http://127.0.0.1:5173. De Vite-client stuurt API-verzoeken door naar de lokale Python-service op poort 8000.
 
+## Notitieboeken met Govern als bron
+
+GhostSketch blijft een zelfstandige app in deze repository. Projecten zijn
+notitieboeken; bestaande sessies zijn compatibel als pagina's, gegroepeerd in
+secties. **Notitiepagina** is de standaardweergave, met automatische notities,
+eigen tekst en een tekenblad voor vinger, pen of muis. Via **Kaarten en verbanden**
+blijft het bestaande bord bereikbaar.
+
+Laad dictafoonopnames in Govern in; daar blijven de audio en transcripties bewaard.
+Stel in je GhostSketch-`.env` `GHOSTSKETCH_GOVERN_URL` in op
+`http://127.0.0.1:8080/dictation-feed.php` en `GHOSTSKETCH_GOVERN_TOKEN` op dezelfde
+willekeurige sleutel van minimaal 32 tekens als Govern's `GHOSTSKETCH_READ_TOKEN`.
+Herstart GhostSketch. De sleutel blijft bij de backend en komt niet in de browser.
+Zie [Govern-inrichting](https://github.com/Esmeevanleeuwen/govern/blob/feature/dictation-source-api/docs/DICTATION.md).
+
+Open een notitieboek en kies **Uit Govern**. Kies een volledig verwerkt transcript;
+GhostSketch maakt een pagina met automatische voorstellen en bronverwijzingen.
+Nogmaals ophalen opent dezelfde pagina zonder duplicaten of overschrijven van
+jouw aanvullingen. Via **Pagina bewerken** verander je sectie, titel en eigen tekst.
+Gebruik **Pen gebruiken** om op het tekenblad te schrijven. De pagina en penstreken
+worden lokaal bewaard en gaan mee in JSON-exports. Markdown bevat je tekst en een
+vermelding van tekeningen; de penstreken zelf staan in JSON.
+
+Ordening gebruikt standaard tekstregels; alleen na expliciete keuze wordt jouw
+lokale Ollama-model gebruikt. Govern hoeft niet als browservenster open te staan,
+maar de Govern-service moet wel draaien. De eerste koppeling werkt op dezelfde
+computer via loopback, zonder automatische live-sync of iPhone-netwerktoegang.
+De oude directe tekst/audio-import blijft beschikbaar voor bestaande workflows.
+
 ## Wat werkt
 
 - Schetsboeken en sessies aanmaken en heropenen, met lokale SQLite-opslag.

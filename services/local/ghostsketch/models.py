@@ -37,6 +37,18 @@ class Position(Model):
     y: float = Field(ge=-100000, le=100000, allow_inf_nan=False)
 
 
+class GovernReference(Model):
+    connection: str = Field(min_length=1, max_length=512)
+    recording_id: Identifier
+    segment_id: Identifier
+    audio_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class Stroke(Model):
+    id: Identifier
+    points: list[Position] = Field(min_length=2, max_length=2000)
+
+
 class Segment(Model):
     id: Identifier
     text: str = Field(min_length=1, max_length=100000)
@@ -44,7 +56,8 @@ class Segment(Model):
     end_ms: int = Field(ge=0, le=86400000)
     created_at: Timestamp
     request_id: Identifier
-    origin: Literal["text", "microphone", "audio"]
+    origin: Literal["text", "microphone", "audio", "govern"]
+    govern_source: GovernReference | None = None
 
     @model_validator(mode="after")
     def valid_range(self):
@@ -134,7 +147,11 @@ class ResearchJob(Model):
 class Session(Model):
     id: Identifier
     title: Title
-    source: Literal["text", "microphone", "audio"]
+    source: Literal["text", "microphone", "audio", "govern"]
+    section: Title = "Algemeen"
+    page_text: str = Field(default="", max_length=100000)
+    strokes: list[Stroke] = Field(default_factory=list, max_length=500)
+    govern_recording: str | None = Field(default=None, max_length=1024)
     created_at: Timestamp
     ended_at: Timestamp | None = None
     segments: list[Segment] = Field(default_factory=list, max_length=2000)
@@ -175,7 +192,7 @@ class Project(Model):
         ids = [self.id]
         for session in self.sessions:
             ids.append(session.id)
-            for collection in (session.segments, session.cards, session.edges, session.research_jobs):
+            for collection in (session.segments, session.cards, session.edges, session.research_jobs, session.strokes):
                 ids.extend(item.id for item in collection)
             for job in session.research_jobs:
                 ids.extend(source.id for source in job.sources)
