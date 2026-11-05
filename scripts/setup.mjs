@@ -1,9 +1,11 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import {root,web,venvPython,pythonCommand,run,npmRun,fail} from './common.mjs';
+import {root,web,venvPython,pythonCommand,run,npmRun,fail,loadEnvironment} from './common.mjs';
 const [major,minor]=process.versions.node.split('.').map(Number);
 if(major<22||(major===22&&minor<12))fail('Installeer Node.js 22.12 of nieuwer.');
+loadEnvironment();
 const python=pythonCommand();
+console.log(`Python gevonden: ${python.join(" ")}`);
 if(!existsSync(venvPython))run(python[0],[...python.slice(1),'-m','venv',path.join(root,'.venv')]);
 run(venvPython,['-m','pip','install','-r',path.join(root,'services/local/requirements.txt')]);
 const dev=path.join(root,'services/local/requirements-dev.txt');

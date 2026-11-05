@@ -5,7 +5,7 @@ Gecontroleerd op 5 november 2026 met Python 3.12, Node.js 24 en Chromium op Linu
 ## Automatische controles
 
 - `npm run check`: strict TypeScript geslaagd.
-- `npm test`: 52 backendtests en 13 frontendtests geslaagd.
+- `npm test`: 52 backendtests, 13 frontendtests en 11 tests voor Python-detectie.
 - `npm run build`: productiebuild geslaagd.
 
 De tests controleren onder meer SQLite-herstart, revisieconflicten, idempotente invoer, echte datumvalidatie, bronverwijzingen, JSON-herstel met nieuwe IDs, lokale API-toegang, upload- en projectgrenzen, modelantwoorden, behoud van oorspronkelijke tekst, audio-opruiming en WAV-opnamegedrag.
@@ -41,3 +41,7 @@ npm start
 ```
 
 De lokale tests maakten uitsluitend eigen tijdelijke testgegevens; gebruikersgegevens en modelgewichten horen niet in Git.
+
+## Windows-installatie
+
+De Python-detectie heeft afzonderlijke Node-tests voor een oude standaardlauncher met een beschikbare Python 3.12, een werkende of kapotte bestaande virtuele omgeving, Microsoft Store-aliassen, timeouts, ontbrekende commando’s en executablepaden met spaties. De GitHub-controle draait setup, tests en build op Ubuntu en Windows met Python 3.12.

@@ -1,1 +1,19 @@
-{"name":"ghostsketch","version":"0.1.0","private":true,"license":"UNLICENSED","description":"Een lokaal schetsboek dat met je gesprek meegroeit","engines":{"node":">=22.12.0"},"scripts":{"setup":"node scripts/setup.mjs","dev":"node scripts/dev.mjs","start":"node scripts/start.mjs","build":"npm --prefix apps/web run build","check":"npm --prefix apps/web run typecheck","test":"node scripts/test.mjs"}}
+{
+  "name": "ghostsketch",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Een lokaal schetsboek dat met je gesprek meegroeit",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "start": "node scripts/start.mjs",
+    "build": "npm --prefix apps/web run build",
+    "check": "npm --prefix apps/web run typecheck",
+    "test": "node scripts/test.mjs",
+    "test:scripts": "node --test scripts/python.test.mjs"
+  }
+}

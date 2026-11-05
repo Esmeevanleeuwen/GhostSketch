@@ -17,6 +17,33 @@ npm start
 
 Open daarna **http://127.0.0.1:8000**. Stop de app met Ctrl+C. De installatie haalt softwarepakketten op, maar geen spraak- of taalmodellen. Na installatie en build heeft de basis geen internet nodig.
 
+### Windows en Python
+
+Bestaat de map `GhostSketch` al? Gebruik die map en haal wijzigingen op met `git pull --ff-only`; opnieuw klonen is niet nodig.
+
+Als setup geen geschikte Python vindt, controleer dan in PowerShell:
+
+```powershell
+py --list-paths
+```
+
+GhostSketch heeft Python 3.11 of nieuwer nodig en wordt getest met Python 3.12. Als er geen geschikte versie is geïnstalleerd:
+
+```powershell
+winget install --exact --id Python.Python.3.12
+```
+
+Sluit en heropen PowerShell na installatie, ga terug naar de map GhostSketch en controleer `py -3.12 --version`. Voer daarna `npm run setup` opnieuw uit. Start de app pas nadat setup succesvol is afgerond. Zonder winget kun je de officiële [Python-installatie voor Windows](https://www.python.org/downloads/windows/) gebruiken.
+
+Setup hergebruikt een bestaande werkende `.venv`. Het probeert op Windows ook Python 3.12 en 3.11 via de launcher, `python3` en de standaard installatiemap voor de huidige gebruiker. Een kapotte of te oude `.venv` wordt niet automatisch verwijderd; de foutmelding legt uit hoe je die map kunt hernoemen.
+
+Voor een nieuwe virtuele omgeving kun je zo nodig een exact executable opgeven:
+
+```powershell
+$env:GHOSTSKETCH_PYTHON = 'C:\pad naar Python\python.exe'
+npm run setup
+```
+
 Ontwikkelen met automatische frontendupdates:
 
 ```sh

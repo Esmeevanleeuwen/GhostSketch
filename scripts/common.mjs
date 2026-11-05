@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { detectPython } from './python.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const web = path.join(root, 'apps/web');
 export const backend = path.join(root, 'services/local');
@@ -13,9 +14,8 @@ export function run(command, args, options = {}) {
  if(r.status!==0) process.exit(r.status??1);
 }
 export function pythonCommand() {
- const candidates=process.platform==='win32'?[['py','-3'],['python']]:[['python3'],['python']];
- for(const c of candidates){const r=spawnSync(c[0],[...c.slice(1),'-c','import sys;sys.exit(0 if sys.version_info >= (3,11) else 1)'],{stdio:'ignore'});if(r.status===0)return c;}
- fail('Installeer Python 3.11 of nieuwer en probeer opnieuw.');
+ try { return detectPython({venvPath:venvPython}); }
+ catch(error) { fail(error.message); }
 }
 export function requireSetup(){if(!existsSync(venvPython)||!existsSync(path.join(web,'node_modules/vite')))fail('Voer eerst npm run setup uit.');}
 export function npmRun(args, options={}) {
