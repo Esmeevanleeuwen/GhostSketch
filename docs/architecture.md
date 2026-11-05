@@ -10,7 +10,7 @@ Projecten bevatten sessies, transcriptfragmenten, kaarten, verbindingen en onder
 
 De standaard gebruikt lokale Nederlandse tekstregels, herkenbaar als regelverwerking. Optioneel kan een eigen lokaal Ollama-model gecontroleerde kaartvoorstellen leveren. Modeluitvoer herschrijft geen bestaande kaarten. Bij een modelprobleem blijft het transcript behouden en volgt een melding; er is geen stille cloudfallback.
 
-De browser vraagt pas na Start om microfoontoegang. Een AudioWorklet verzamelt PCM en de client maakt zelfstandige WAV-fragmenten. Upload is sequentieel en begrensd. Stoppen geeft de microfoon direct vrij; verwerking van eerder opgenomen fragmenten blijft apart zichtbaar. Een eigen lokale whisper.cpp-server doet de transcriptie. ffmpeg is optioneel voor andere telefoonformaten. Tijdelijke audio wordt na verwerking verwijderd.
+De browser vraagt pas na Start om microfoontoegang. Een AudioWorklet verzamelt PCM en de client maakt zelfstandige WAV-fragmenten. Upload is sequentieel en begrensd. Stoppen geeft de microfoon direct vrij; verwerking van eerder opgenomen fragmenten blijft apart zichtbaar. Een eigen lokale whisper.cpp-server doet de transcriptie. ffmpeg is optioneel voor andere telefoonformaten. Eerst wordt ieder origineel via de opslag-API in Govern bewaard. GhostSketch transcribeert lokaal en schrijft het transcript terug naar Govern voordat notities worden toegevoegd. Alleen tijdelijke conversiebestanden worden verwijderd.
 
 ## Onderzoek en netwerk
 
@@ -22,10 +22,15 @@ Test Nederlandse modelkwaliteit en snelheid eerst op de doelcomputer. Automatisc
 
 ## Govern en notitiepagina's
 
-Govern archiveert audiobronnen en transcribeert ze. `govern.py` leest alleen de
-servergeconfigureerde lokale feed met een backend-token; de browser krijgt geen
-Govern-cookie, sleutel of SQL-toegang. GhostSketch bewaart eigen notitieboeken en
-herleidbare transcriptkopieën in SQLite. Geen ruwe audio via deze verbinding.
+GhostSketch verzorgt opname, import, transcriptie en koppeling. `govern.py` gebruikt
+`ghostsketch-storage.php` voor audio en transcriptopslag. De sleutel blijft server-side;
+de browser heeft geen Govern-cookie of SQL-toegang. GhostSketch bewaart eigen
+notitieboeken en herleidbare transcriptkopieën in SQLite. Een opslagfout blokkeert
+verwerking; een transcriptiefout laat de gearchiveerde audio intact. **Opnames** kan
+de audio opnieuw ophalen, checksum controleren en verwerken. Voltooide bronnen
+worden niet opnieuw getranscribeerd. Locks per opname en per pagina plus stabiele
+bron-IDs voorkomen dubbel werk binnen één serviceproces. De database bewaakt
+onveranderlijkheid en conflicten ook bij meerdere serviceprocessen.
 
 De bestaande Project/Session-modellen blijven compatibel: Project is het
 notitieboek; Session is een pagina met `section`, `page_text`, `strokes` en een

@@ -87,3 +87,92 @@ def test_local_configuration_and_authentication_failure():
 def test_ink_limit_and_missing_token():
     with tempfile.TemporaryDirectory() as directory, TestClient(create_app(directory,govern=source()),base_url='http://localhost:8000') as client:
         assert client.post(f'/api/projects/unknown/govern/{RID}').status_code == 403
+
+@pytest.fixture
+def capture():
+    from storage_fixture import StorageFixture
+    from test_api import FakeAdapters
+    from ghostsketch.models import now_iso
+    storage, adapters = StorageFixture(), FakeAdapters()
+    with tempfile.TemporaryDirectory() as directory, TestClient(create_app(directory, adapters, govern=storage.source),base_url='http://localhost:8000') as client:
+        bootstrap = client.get('/api/bootstrap').json()
+        assert bootstrap['capabilities']['govern_storage'] is True
+        assert storage.source.token not in str(bootstrap)
+        headers={'X-GhostSketch-Token':bootstrap['token']}
+        project=client.post('/api/projects',headers=headers,json={'title':'Gesprek'}).json()
+        project['sessions']=[dict(id='capture-page',title='Opname',source='microphone',created_at=now_iso())]
+        project=client.put('/api/projects/'+project['id'],headers=headers,json={'expected_revision':project['revision'],'project':project}).json()
+        def upload(request_id='capture-one',start_ms=0):
+            return client.post('/api/sessions/capture-page/audio',headers=headers,data={'request_id':request_id,'start_ms':start_ms},files={'file':('spraak.wav',b'synthetic audio','audio/wav')})
+        yield client,headers,project,storage,adapters,upload
+
+
+def test_capture_archives_before_transcribing_and_links_exact_source(capture):
+    client,headers,project,storage,adapters,upload=capture
+    original_transcribe=adapters.transcribe
+    def transcribe(content,filename):
+        assert list(storage.bytes.values()) == [content]
+        assert next(iter(storage.rows.values()))['status']=='pending'
+        return original_transcribe(content,filename)
+    adapters.transcribe=transcribe
+    first=upload()
+    assert first.status_code==200,first.text
+    segment=first.json()['project']['sessions'][0]['segments'][0]
+    rid=segment['govern_source']['recording_id']; row=storage.rows[rid]
+    assert row['status']=='ready' and row['segments'][0]['text']==segment['text']
+    assert row['segments'][0]['id']==segment['govern_source']['segment_id']
+    assert adapters.audio_calls==1
+    repeat=upload('retry-after-uncertain-response')
+    assert repeat.status_code==200 and len(repeat.json()['project']['sessions'][0]['segments'])==1
+    assert adapters.audio_calls==1 and len(storage.rows)==1
+    assert upload(start_ms=8000).status_code==409
+
+
+def test_archive_failure_stops_before_transcription(capture):
+    client,headers,project,storage,adapters,upload=capture
+    storage.fail_upload=True
+    assert upload().status_code==503
+    assert adapters.audio_calls==0 and not storage.rows
+    assert client.get('/api/projects/'+project['id']).json()==project
+
+
+@pytest.mark.parametrize('failure',['transcribe','complete'])
+def test_failed_processing_retains_archive_and_resumes_from_ghostsketch(capture,failure):
+    client,headers,project,storage,adapters,upload=capture
+    adapters.failure=failure=='transcribe'
+    storage.fail_complete=failure=='complete'
+    failed=upload()
+    assert failed.status_code==503 and 'De opname staat in Govern' in failed.text
+    assert client.get('/api/projects/'+project['id']).json()==project
+    row=next(iter(storage.rows.values()))
+    assert row['status']=='pending' and storage.bytes[row['id']]==b'synthetic audio'
+    adapters.failure=False; storage.fail_complete=False
+    path=f'/api/projects/{project["id"]}/govern/{row["id"]}'
+    resumed=client.post(path,headers=headers)
+    assert resumed.status_code==200,resumed.text
+    page=next(p for p in resumed.json()['project']['sessions'] if p['source']=='govern')
+    assert page['cards'] and len(page['segments'])==1
+    assert storage.rows[row['id']]['status']=='ready' and 'audio' in storage.calls
+    again=client.post(path,headers=headers).json()
+    assert len(again['project']['sessions'])==2
+    assert len(next(p for p in again['project']['sessions'] if p['source']=='govern')['segments'])==1
+
+
+def test_audio_requires_writable_govern_before_model(capture):
+    client,headers,project,storage,adapters,upload=capture
+    storage.source.url='http://127.0.0.1:8080/dictation-feed.php'
+    assert client.get('/api/bootstrap').json()['capabilities']['govern_storage'] is False
+    assert upload().status_code==503
+    assert adapters.audio_calls==0 and storage.calls==[]
+
+
+def test_retry_rejects_changed_archived_audio(capture):
+    client,headers,project,storage,adapters,upload=capture
+    adapters.failure=True
+    assert upload().status_code==503
+    row=next(iter(storage.rows.values()));storage.bytes[row['id']]=b'changed'
+    adapters.failure=False
+    resumed=client.post(f'/api/projects/{project["id"]}/govern/{row["id"]}',headers=headers)
+    assert resumed.status_code==503 and 'gewijzigd' in resumed.text
+    assert adapters.audio_calls==1
+    assert client.get('/api/projects/'+project['id']).json()==project

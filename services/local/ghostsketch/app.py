@@ -1,4 +1,4 @@
-"""Local HTTP boundary. No route fetches research or retains recordings."""
+"""Local HTTP boundary. GhostSketch processes audio; Govern archives the sources."""
 from __future__ import annotations
 
 import os
@@ -16,9 +16,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 from typing import Annotated
 
-from .govern import GovernSource
+from .govern import GovernSource, MAX_ARCHIVE_BYTES
 from . import __version__
-from .adapters import AdapterError, LocalAdapters, MAX_UPLOAD_BYTES
+from .adapters import AdapterError, LocalAdapters
 from .models import AudioInput, Card, Identifier, NewProject, Project, SaveProject, Settings, TextInput
 from .organizer import extract_rules
 from .store import Store, StoreError, default_data_dir
@@ -55,6 +55,7 @@ def create_app(data_dir=None, adapters=None, frontend_dir=None, govern=None) -> 
     app.state.store, app.state.adapters = store, local
     app.state.token = secrets.token_urlsafe(32)
     locks = [threading.RLock() for _ in range(32)]
+    recording_locks = [threading.RLock() for _ in range(32)]
     frontend = Path(frontend_dir) if frontend_dir else Path(__file__).resolve().parents[3] / "apps/web/dist"
     frontend = frontend.resolve()
 
@@ -68,13 +69,13 @@ def create_app(data_dir=None, adapters=None, frontend_dir=None, govern=None) -> 
             token = request.headers.get("x-ghostsketch-token", "")
             if not secrets.compare_digest(token, app.state.token):
                 return JSONResponse({"detail": "De lokale sessiesleutel ontbreekt of is verlopen. Herlaad de app."}, status_code=403)
-            limit = MAX_UPLOAD_BYTES + 65536 if request.url.path.endswith("/audio") else JSON_LIMIT
+            limit = MAX_ARCHIVE_BYTES + 65536 if request.url.path.endswith("/audio") else JSON_LIMIT
             try:
                 length = int(request.headers.get("content-length", "0"))
             except ValueError:
                 return JSONResponse({"detail": "Ongeldige verzoeklengte."}, status_code=400)
             if length < 0 or length > limit:
-                return JSONResponse({"detail": "Het bestand of verzoek is te groot. Audio mag maximaal 25 MiB zijn."}, status_code=413)
+                return JSONResponse({"detail": "Het bestand of verzoek is te groot. Audio mag maximaal 16 MiB zijn."}, status_code=413)
             chunks, size = [], 0
             async for chunk in request.stream():
                 size += len(chunk)
@@ -106,11 +107,11 @@ def create_app(data_dir=None, adapters=None, frontend_dir=None, govern=None) -> 
 
     @app.get("/api/bootstrap")
     def bootstrap():
-        return {"token": app.state.token, "projects": store.list(), "settings": store.settings(), "capabilities": local.capabilities()}
+        return {"token": app.state.token, "projects": store.list(), "settings": store.settings(), "capabilities": {**local.capabilities(), "govern_storage": source.writable}}
 
     @app.get("/api/capabilities")
     def capabilities():
-        return local.capabilities()
+        return {**local.capabilities(), "govern_storage": source.writable}
 
     @app.get("/api/projects")
     def list_projects():
@@ -180,12 +181,27 @@ def create_app(data_dir=None, adapters=None, frontend_dir=None, govern=None) -> 
 
     @app.get("/api/govern/recordings")
     def govern_recordings():
-        return {"configured": source.configured, "recordings": source.read() if source.configured else []}
+        return {"configured": source.configured, "writable": source.writable, "recordings": source.read() if source.configured else []}
+
+    def ensure_transcript(recording_id, content=None):
+        with recording_locks[hash(str(recording_id)) % len(recording_locks)]:
+            recording = source.read(recording_id, ready=False)
+            if recording.status == "ready":
+                return recording
+            source.require_storage()
+            if recording.segments:
+                raise AdapterError("Deze oudere opname heeft een gedeeltelijk transcript. De bron blijft bewaard; gebruik een nieuwe opname voor de nieuwe route.", 409)
+            try:
+                audio = content if content is not None else source.audio(recording)
+                text, _ = local.transcribe(audio, recording.filename)
+                return source.complete(recording, text)
+            except AdapterError as exc:
+                raise AdapterError("De opname staat in Govern. Probeer vanuit GhostSketch opnieuw via Opnames. " + exc.message, exc.status_code) from exc
 
     @app.post("/api/projects/{project_id}/govern/{recording_id}")
     def import_govern(project_id: Identifier, recording_id: UUID):
         store.get(project_id)
-        transcript = source.read(recording_id)
+        transcript = ensure_transcript(recording_id)
         identity = source.identity + "#" + str(transcript.id) + ":" + transcript.sha256
         page_id = store.govern_page(project_id, identity, transcript.filename)
         warnings = []
@@ -213,22 +229,40 @@ def create_app(data_dir=None, adapters=None, frontend_dir=None, govern=None) -> 
     ):
         try:
             with locks[hash(session_id) % len(locks)]:
-                previous = store.outcome(session_id, request_id)
-                if previous:
-                    return envelope(previous[0], session_id, previous[1], previous[2])
                 project = store.session_project(session_id)
                 session = next(s for s in project.sessions if s.id == session_id)
-                content = file.file.read(MAX_UPLOAD_BYTES + 1)
-                if len(content) > MAX_UPLOAD_BYTES:
-                    raise AdapterError("Audio mag maximaal 25 MiB zijn.", 413)
-                text, duration = local.transcribe(content, file.filename or "audio.wav")
+                source.require_storage()
+                content = file.file.read(MAX_ARCHIVE_BYTES + 1)
+                if not content or len(content) > MAX_ARCHIVE_BYTES:
+                    raise AdapterError("Kies een opname van maximaal 16 MiB.", 413)
+                checksum = hashlib.sha256(content).hexdigest()
+                previous = next((s for s in session.segments if s.request_id == request_id), None)
+                if previous and (not previous.govern_source or previous.govern_source.audio_sha256 != checksum or previous.start_ms != start_ms):
+                    raise AdapterError("Deze aanvraag hoort bij een andere opname.",409)
+                # An uncertain HTTP response can be retried without duplicating the note.
+                same = previous or next((s for s in session.segments if s.govern_source
+                    and s.govern_source.audio_sha256 == checksum and s.start_ms == start_ms), None)
+                if same:
+                    outcome = store.outcome(session_id, same.request_id)
+                    if outcome:
+                        return envelope(outcome[0],session_id,outcome[1],outcome[2])
+                    request_id = same.request_id
+                recording = source.archive(content, file.filename or "opname.wav")
+                transcript = ensure_transcript(recording.id, content)
+                if len(transcript.segments) != 1:
+                    raise AdapterError("Deze oudere opname heeft meerdere transcriptfragmenten. Open deze via Opnames om alle bronverwijzingen te behouden.",409)
+                text = transcript.segments[0].text
                 if not text.strip():
-                    return envelope(store.session_project(session_id), session_id, store.settings().organizer, ["Er is geen spraak herkend. Er zijn geen tekst of kaarten toegevoegd."])
+                    return envelope(store.session_project(session_id), session_id, store.settings().organizer,
+                        ["Er is geen spraak herkend. De opname is in Govern bewaard; er zijn geen kaarten toegevoegd."])
                 try:
-                    body = AudioInput(text=text, request_id=request_id, start_ms=start_ms, end_ms=start_ms + duration)
+                    body = AudioInput(text=text, request_id=request_id, start_ms=start_ms, end_ms=start_ms + transcript.duration_ms)
                 except ValidationError as exc:
-                    raise AdapterError("De transcriptie of de tijdsduur is te groot voor één fragment.", 422) from exc
-                return ingest(session_id, body, "microphone" if session.source == "microphone" else "audio")
+                    raise AdapterError("Het transcript is bewaard, maar past niet op deze pagina.",422) from exc
+                reference = {"connection":source.identity,"recording_id":str(transcript.id),
+                    "segment_id":str(transcript.segments[0].id),"audio_sha256":transcript.sha256}
+                return ingest(session_id,body,"microphone" if session.source=="microphone" else "audio",reference)
+
         finally:
             file.file.close()
 

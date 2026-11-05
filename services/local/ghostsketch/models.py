@@ -205,6 +205,7 @@ class Settings(Model):
     organizer: Literal["rules", "ollama"] = "rules"
     ollama_model: str = Field(default="", max_length=150)
     language: Literal["nl"] = "nl"
+    # Legacy setting: GhostSketch itself keeps no raw audio; Govern archives it.
     recordings_retained: Literal[False] = False
 
     @model_validator(mode="after")

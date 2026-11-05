@@ -46,17 +46,21 @@ De lokale tests maakten uitsluitend eigen tijdelijke testgegevens; gebruikersgeg
 
 De Python-detectie heeft afzonderlijke Node-tests voor een oude standaardlauncher met een beschikbare Python 3.12, een werkende of kapotte bestaande virtuele omgeving, Microsoft Store-aliassen, timeouts, ontbrekende commando’s en executablepaden met spaties. De GitHub-controle draait setup, tests en build op Ubuntu en Windows met Python 3.12.
 
-## Govern notebook pages — 6 November 2026
+## GhostSketch capture with Govern storage
 
-- All 59 Python tests passed, including the new Govern feed/API/SQLite tests:
-  stable imports, preserved user edits, ink and external provenance, exported-copy
-  reimports, immutable source text, invalid/incomplete feeds and missing access.
-- All 13 frontend tests and 11 Python-launcher tests passed; TypeScript and the
-  production build passed.
-- Chromium with a synthetic Govern feed and real GhostSketch HTTP/SQLite passed:
-  create notebook, import recording, generate notes, edit section/page text, draw,
-  repeat import and inspect saved data. 1440, 768 and 375 px had no page overflow
-  or JavaScript page errors. This proves the UI/storage flow, not speech quality.
-- The real Govern Docker/PHP/native PostgreSQL/Whisper deployment and a physical
-  iPhone were not exercised. The source connection needs configuration in both
-  installations; this version has explicit imports and local access, not live sync.
+This revision moves recording/import, transcription and linking into GhostSketch;
+Govern stores original audio and transcripts. Validation:
+
+- 65 Python tests passed, including archive-before-model order, saved sources after
+  transcription/completion failures, retry via Opnames, checksum verification,
+  idempotent successful uploads and rejecting a read-only storage connection for audio.
+- 13 frontend tests, 11 launcher tests, TypeScript and the production build passed.
+- Chromium with synthetic storage/model boundaries and real HTTP/SQLite passed audio
+  import in GhostSketch, pending-recording processing, automatic linked notes, page
+  edits, ink and repeat opening. No horizontal overflow at 1440/768/375 or page errors.
+- Govern PHP syntax and real ffmpeg decoding tests passed. PGlite exercised storage
+  schema, permissions, repeated transcript-size migration and size constraints.
+
+No real Whisper model, physical microphone/iPhone, Docker/Windows provisioner or full
+native PHP/PDO/PostgreSQL chain was exercised. Fixtures test the integration contract,
+not speech recognition quality or a deployed installation. Tests need no user audio.

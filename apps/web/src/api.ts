@@ -11,7 +11,7 @@ async function request<T>(path:string, options:RequestInit={}):Promise<T>{
  return response.json() as Promise<T>;
 }
 export const api={
- governRecordings:()=>request<{configured:boolean;recordings:GovernRecording[]}>('/govern/recordings'),
+ governRecordings:()=>request<{configured:boolean;writable:boolean;recordings:GovernRecording[]}>('/govern/recordings'),
  importGovern:(projectId:string,recordingId:string)=>request<ImportResponse>('/projects/'+encodeURIComponent(projectId)+'/govern/'+encodeURIComponent(recordingId),{method:'POST'}),
  bootstrap:async()=>{const data=await request<Bootstrap>('/bootstrap');token=data.token;return data},
  projects:()=>request<ProjectSummary[]>('/projects'),
