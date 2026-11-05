@@ -52,6 +52,46 @@ npm run dev
 
 Open http://127.0.0.1:5173. De Vite-client stuurt API-verzoeken door naar de lokale Python-service op poort 8000.
 
+## Notitieboeken met Govern als bron
+
+GhostSketch blijft een zelfstandige app in deze repository. Projecten zijn
+notitieboeken; bestaande sessies zijn compatibel als pagina's, gegroepeerd in
+secties. **Notitiepagina** is de standaardweergave, met automatische notities,
+eigen tekst en een tekenblad voor vinger, pen of muis. Via **Kaarten en verbanden**
+blijft het bestaande bord bereikbaar.
+
+De dictafoon, audio-import, transcriptie en het koppelen aan notities zitten in
+GhostSketch. Govern bewaart de oorspronkelijke audio en transcripties.
+Stel in GhostSketch `.env` in:
+
+```dotenv
+GHOSTSKETCH_GOVERN_URL=http://127.0.0.1:8080/ghostsketch-storage.php
+GHOSTSKETCH_GOVERN_TOKEN=<dezelfde-sleutel-als-Govern-GHOSTSKETCH_STORAGE_TOKEN>
+```
+
+Gebruik een willekeurige sleutel van minimaal 32 tekens en herstart beide apps.
+De sleutel blijft bij de backend. Zie [Govern-inrichting](https://github.com/Esmeevanleeuwen/govern/blob/feature/dictation-sources/docs/DICTATION.md)
+voor PostgreSQL, provisioning en de opslagkoppeling. Stel de lokale whisper.cpp-
+service hieronder in. Govern hoeft niet in een browservenster open te staan,
+maar de service moet wel draaien.
+
+Open een notitieboek en kies **Importeren → Audio-opname** of **Neem gesprek op**.
+De audio wordt eerst in Govern opgeslagen. GhostSketch transcribeert lokaal,
+bewaart het transcript in Govern en voegt automatische notities met bronverwijzingen
+aan je pagina toe. Bij een fout blijft de audio bewaard. Via **Opnames** kun je
+opnieuw transcriberen of een eerder gesprek openen als notitiepagina. Dezelfde
+pagina opnieuw openen behoudt jouw aanvullingen en maakt geen dubbele voorstellen.
+
+Via **Pagina bewerken** verander je sectie, titel en eigen tekst. Gebruik **Pen gebruiken**
+om te schrijven. Notitieboeken, eigen tekst, kaarten en tekeningen blijven lokaal in
+SQLite; JSON-exports bevatten die gegevens en de transcriptkopieën, geen audio.
+Markdown bevat eigen tekst en een vermelding van tekeningen; de penstreken staan in JSON.
+
+Ordening gebruikt standaard tekstregels; optioneel kies je jouw lokale Ollama-model.
+Deze koppeling werkt op dezelfde computer via loopback. Een bestaande alleen-lezen
+`dictation-feed.php`-koppeling kan voltooide bronnen blijven openen, maar ondersteunt
+geen opname of audio-import. Tekstinvoer werkt ook zonder Govern.
+
 ## Wat werkt
 
 - Schetsboeken en sessies aanmaken en heropenen, met lokale SQLite-opslag.
@@ -75,9 +115,9 @@ Installeer Ollama en download zelf een geschikt klein meertalig model. Laat Olla
 
 Start een eigen `whisper-server` met een meertalig model op **127.0.0.1:8081**. GhostSketch gebruikt de lokale `/inference`-API. Er is geen cloudspraakfallback en de app downloadt geen modellen.
 
-Wanneer de service beschikbaar is, kun je een opname importeren of na een bewuste start de computermicrofoon gebruiken. De browser maakt zelfstandige WAV-fragmenten. Pauzeren of stoppen geeft de microfoon direct vrij; reeds ontvangen fragmenten kunnen nog worden verwerkt.
+Wanneer de spraakservice en Govern-opslag zijn ingesteld, kun je een opname importeren of na een bewuste start de computermicrofoon gebruiken. De browser maakt zelfstandige WAV-fragmenten. Pauzeren of stoppen geeft de microfoon direct vrij; reeds ontvangen fragmenten kunnen nog worden verwerkt.
 
-WAV is de basisroute. Voor andere telefoonformaten zoals M4A moet **ffmpeg** op het systeem beschikbaar zijn. Ruwe opnames worden tijdelijk verwerkt en daarna verwijderd; deze versie archiveert geen audio.
+WAV is de basisroute. Voor andere telefoonformaten zoals M4A moet **ffmpeg** op het systeem beschikbaar zijn. De oorspronkelijke audio wordt vooraf in Govern gearchiveerd. Alleen tijdelijke conversiebestanden worden na verwerking verwijderd.
 
 Je Action- of HEMA-speaker is voor geluidsweergave. Of hij ook als microfoon werkt hangt af van het model en de computer. Je kunt altijd beginnen met telefoonnotities plakken.
 
@@ -91,13 +131,13 @@ Deze versie heeft **geen autonome zoekagent**. Je bekijkt en bevestigt de zoekte
 
 ## Opslag en privacy
 
-Projecten en instellingen worden lokaal opgeslagen. De opslaglocatie is via `GHOSTSKETCH_DATA_DIR` instelbaar. Bewaar exports als back-up. Het JSON-formaat bevat je transcript, kaarten en bronnen; behandel zulke bestanden als privégegevens. De app versleutelt de database niet zelf.
+Notitieboeken en instellingen worden lokaal in SQLite opgeslagen. Govern bewaart audio en oorspronkelijke transcripties in PostgreSQL. Verwijderen van een notitieboek verwijdert de bronopnames niet. Maak ook een back-up van Govern; een notebookexport bevat geen audio. De opslaglocatie is via `GHOSTSKETCH_DATA_DIR` instelbaar. Bewaar exports als back-up. Het JSON-formaat bevat je transcript, kaarten en bronnen; behandel zulke bestanden als privégegevens. De app versleutelt de database niet zelf.
 
 De HTTP-service luistert op 127.0.0.1. De app controleert Host en Origin en beschermt wijzigingen met een willekeurig sessietoken. Er is geen account, cloudopslag of standaardtelemetrie.
 
 ## Grenzen van de eerste versie
 
-Een schetsboek mag maximaal 7 MiB aan opgeslagen gegevens bevatten. Geplakte notities mogen tot 50.000 tekens bevatten; voor één Ollama-verzoek geldt 16.000 tekens. Audio-import accepteert maximaal 25 MiB en 30 minuten per bestand. Als een grens wordt bereikt, blijft de laatst bevestigde versie behouden. Verdeel langere gesprekken of notities over meerdere sessies of schetsboeken.
+Een schetsboek mag maximaal 7 MiB aan opgeslagen gegevens bevatten. Geplakte notities mogen tot 50.000 tekens bevatten; voor één Ollama-verzoek geldt 16.000 tekens. Audio-import accepteert WAV, M4A en MP3 tot maximaal 16 MiB en 30 minuten per bestand. Als een grens wordt bereikt, blijft de laatst bevestigde versie behouden. Verdeel langere gesprekken of notities over meerdere sessies of schetsboeken.
 
 ## Controleren
 

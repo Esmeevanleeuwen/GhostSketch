@@ -57,8 +57,8 @@ export function ImportScreen({project,session,busy,capabilities,onImportText,onI
   const disabled=busy||working;
   const run=async(work:()=>Promise<void>)=>{setWorking(true);setError('');try{await work()}catch(err){setError(messageOf(err))}finally{setWorking(false)}};
   const submitText=(event:FormEvent)=>{event.preventDefault();if(!text.trim()){setError('Plak eerst je notitie.');return}void run(async()=>{await onImportText(text.trim());setText('')})};
-  const submitAudio=(event:FormEvent)=>{event.preventDefault();if(!audio){setError('Kies eerst een opname.');return}if(audio.size>25*1024*1024){setError('De opname is te groot. Kies een bestand van maximaal 25 MB.');return}void run(()=>onImportAudio(audio))};
-  const submitJson=(event:FormEvent)=>{event.preventDefault();if(!json){setError('Kies eerst een GhostSketch-export.');return}if(json.size>25*1024*1024){setError('Dit bestand is te groot. Kies een export van maximaal 25 MB.');return}void run(()=>onImportJson(json))};
+  const submitAudio=(event:FormEvent)=>{event.preventDefault();if(!audio){setError('Kies eerst een opname.');return}if(audio.size>16*1024*1024){setError('De opname is te groot. Kies een bestand van maximaal 16 MiB.');return}void run(()=>onImportAudio(audio))};
+  const submitJson=(event:FormEvent)=>{event.preventDefault();if(!json){setError('Kies eerst een GhostSketch-export.');return}if(json.size>25*1024*1024){setError('Dit bestand is te groot. Kies een export van maximaal 16 MiB.');return}void run(()=>onImportJson(json))};
   return <>
     <Heading eyebrow="Notities importeren" title="Van je telefoon naar je schetsboek."><p>Breng losse gedachten samen in <strong>{project.title}</strong>. Jij kiest welke voorstellen blijven.</p></Heading>
     <div className="two-col import-layout"><section className="surface">
@@ -71,13 +71,14 @@ export function ImportScreen({project,session,busy,capabilities,onImportText,onI
         <button className="btn primary" disabled={disabled||!session||!text.trim()}>{working?'Voorstellen maken…':'Maak kaartvoorstellen'}</button>
       </form> : tab==='audio' ? <form onSubmit={submitAudio}>
         <h2>Een gesprek om terug te lezen.</h2><p className="muted">Exporteer een opname van je telefoon en kies het bestand op deze computer.</p>
-        <label className="field file-input">Je opname<input type="file" name="opname" accept="audio/*,.wav,.m4a,.mp3,.ogg,.webm,.flac" disabled={disabled} onChange={e=>setAudio(e.target.files?.[0]??null)}/></label>
+        <label className="field file-input">Je opname<input type="file" name="opname" accept="audio/wav,audio/mp4,audio/mpeg,.wav,.m4a,.mp3" disabled={disabled} onChange={e=>setAudio(e.target.files?.[0]??null)}/></label>
         {audio?<p className="file-description">{audio.name} · {(audio.size/1024/1024).toFixed(1)} MB</p>:null}
-        <p className="muted small">Maximaal 25 MB. WAV wordt direct verwerkt. Andere formaten vereisen de lokale FFmpeg-converter. Ruwe audio wordt na verwerking verwijderd.</p>
+        <p className="muted small">Maximaal 16 MiB. GhostSketch verwerkt de opname lokaal. Govern bewaart de oorspronkelijke audio en transcriptie. M4A en MP3 vereisen FFmpeg op deze computer.</p>
+        {!capabilities.govern_storage?<div className="notice warning">Stel eerst de opslagkoppeling met Govern in via .env en herstart GhostSketch.</div>:null}
         {!capabilities.audio_conversion_available?<p className="muted small">De audio-converter is niet beschikbaar. Gebruik een WAV-bestand of installeer FFmpeg volgens de README.</p>:null}
         {!capabilities.speech_available?<div className="notice warning"><p>De lokale spraakservice is nog niet beschikbaar. Stel whisper.cpp in om opnames te verwerken.</p><button type="button" className="btn quiet" onClick={()=>onNavigate('settings')}>Bekijk lokale verwerking</button></div>:null}
         {!session?<button type="button" className="btn" onClick={onNewSession}>Maak eerst een sessie</button>:null}
-        <button className="btn primary" disabled={disabled||!session||!audio||!capabilities.speech_available}>{working?'Opname verwerken…':'Verwerk opname lokaal'}</button>
+        <button className="btn primary" disabled={disabled||!session||!audio||!capabilities.speech_available||!capabilities.govern_storage}>{working?'Opname verwerken…':'Verwerk opname lokaal'}</button>
       </form> : <form onSubmit={submitJson}>
         <h2>Neem een schetsboek weer mee.</h2><p className="muted">Importeer een JSON-export van GhostSketch. Er wordt een apart schetsboek gemaakt; bestaande schetsboeken blijven behouden.</p>
         <label className="field">GhostSketch-bestand<input type="file" name="ghostsketch-export" accept=".json,application/json" disabled={disabled} onChange={e=>setJson(e.target.files?.[0]??null)}/></label>
@@ -214,8 +215,8 @@ export function SettingsScreen({settings,capabilities,busy,onSaveSettings,onRefr
         <div className="rule"/><div className="row"><button className="btn primary" disabled={disabled}>{working?'Opslaan…':'Bewaar instellingen'}</button><button type="button" className="btn quiet" disabled={disabled} onClick={()=>void refresh()}>Controleer services</button></div>
         <div className="notice" style={{marginTop:24}}><p><strong>Prestaties eerst meten.</strong> 16 GB geheugen is een uitgangspunt. De processor en Nederlandse spraakkwaliteit bepalen welke combinatie prettig werkt.</p></div>
       </form>:<>
-        <h2>Jouw gesprek. Jouw keuzes.</h2><p className="muted">Projecten, transcript en bronnen worden door de lokale service in SQLite bewaard. Er is geen cloudopslag of account nodig.</p>
-        <div className="settingsrow"><div><strong>Ruwe audio bewaren</strong><small>Uit. Opnames worden tijdelijk verwerkt en daarna verwijderd. Bewaren van ruwe audio is in deze versie niet beschikbaar.</small></div><span className="badge neutral">Uit</span></div>
+        <h2>Jouw gesprek. Jouw keuzes.</h2><p className="muted">Notitieboeken en eigen aanvullingen worden lokaal bewaard. Govern bewaart de oorspronkelijke audio en transcripties.</p>
+        <div className="settingsrow"><div><strong>Ruwe audio bewaren</strong><small>Opnames worden in Govern bewaard voordat GhostSketch ze transcribeert. Verwijderen van een notitieboek verwijdert de bronopnames in Govern niet.</small></div><span className="badge neutral">In Govern</span></div>
         <div className="settingsrow"><div><strong>Online onderzoek</strong><small>Elke exacte zoektekst vraagt apart toestemming. Daarna kies je zelf de zoeklink in je browser. Bronnen voeg je handmatig toe.</small></div><span className="badge neutral">Jij kiest</span></div>
         <div className="settingsrow"><div><strong>Telemetrie</strong><small>De app bevat geen telemetrie of analytics. Lokale modellen maken alleen verbinding met de ingestelde loopbackservices.</small></div><span className="badge neutral">Uit</span></div>
         <div className="settingsrow"><div><strong>Je gegevens meenemen</strong><small>Exporteer je schetsboek als JSON of leesbare Markdown.</small></div><button className="btn" onClick={()=>onNavigate('review')}>Bekijk export</button></div>

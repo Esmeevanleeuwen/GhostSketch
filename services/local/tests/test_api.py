@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from ghostsketch.adapters import AdapterError
 from ghostsketch.app import create_app
 from ghostsketch.models import now_iso
+from storage_fixture import StorageFixture
 
 
 class FakeAdapters:
@@ -41,7 +42,8 @@ class ApiTests(TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.adapters = FakeAdapters()
-        self.app = create_app(self.directory.name, self.adapters)
+        self.storage = StorageFixture()
+        self.app = create_app(self.directory.name, self.adapters, govern=self.storage.source)
         self.client = TestClient(self.app, base_url="http://localhost:8000")
         self.headers = {"X-GhostSketch-Token": self.client.get("/api/bootstrap").json()["token"]}
 

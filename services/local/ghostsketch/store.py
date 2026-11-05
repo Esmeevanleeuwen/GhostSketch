@@ -10,7 +10,7 @@ import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
-from .models import Card, NewProject, Project, Segment, Settings, TextInput, now_iso
+from .models import Card, NewProject, Project, Segment, Session, Settings, TextInput, now_iso
 
 # Below the HTTP snapshot limit, so every stored project can still be edited/exported.
 MAX_PROJECT_BYTES = 7 * 1024 * 1024
@@ -43,7 +43,7 @@ def project_size(project: Project, document: str | None = None) -> int:
     identifiers = [project.id]
     for session in project.sessions:
         identifiers.append(session.id)
-        for collection in (session.segments, session.cards, session.edges, session.research_jobs):
+        for collection in (session.segments, session.cards, session.edges, session.research_jobs, session.strokes):
             identifiers.extend(item.id for item in collection)
         identifiers.extend(segment.request_id for segment in session.segments)
         for card in session.cards:
@@ -177,6 +177,11 @@ class Store:
             if current.revision != expected_revision:
                 raise StoreError("Dit schetsboek is intussen gewijzigd. Bewaar je lokale wijzigingen of laad de nieuwste versie.",409)
             updated = incoming.model_copy(update=dict(revision=current.revision+1,created_at=current.created_at,updated_at=now_iso()),deep=True)
+            previous_sources = {segment.id: segment for session in current.sessions for segment in session.segments if segment.govern_source}
+            for session in updated.sessions:
+                for segment in session.segments:
+                    if segment.id in previous_sources and segment != previous_sources[segment.id]:
+                        raise StoreError("De Govern-bron blijft ongewijzigd. Schrijf je correctie in de eigen aantekeningen.", 422)
             previous_cards = {card.id: card for session in current.sessions for card in session.cards}
             for session in updated.sessions:
                 for card in session.cards:
@@ -204,7 +209,7 @@ class Store:
                     collect(child)
         def rekey(value,key=""):
             if isinstance(value,dict):
-                return {field:rekey(child, "edge_source" if field == "source" and "target" in value else field) for field,child in value.items()}
+                return {field:(child if field == "request_id" and value.get("govern_source") else rekey(child, "edge_source" if field == "source" and "target" in value else field)) for field,child in value.items()}
             if isinstance(value,list):
                 return [rekey(child,key) for child in value]
             if isinstance(value,str):
@@ -223,6 +228,18 @@ class Store:
             self._write(conn,imported)
         return imported
 
+    def govern_page(self, project_id, identity, title):
+        with self.connection(write=True) as conn:
+            project = self._read(conn, project_id)
+            page = next((s for s in project.sessions if s.govern_recording == identity), None)
+            if page is None:
+                page = Session(id=str(uuid4()), title=title[:160], source="govern", created_at=now_iso(), govern_recording=identity)
+                project.sessions.append(page)
+                project.revision += 1
+                project.updated_at = now_iso()
+                self._write(conn, project)
+        return page.id
+
     def settings(self):
         with self.connection() as conn:
             return Settings.model_validate_json(conn.execute("SELECT document FROM settings WHERE id=1").fetchone()["document"])
@@ -232,7 +249,7 @@ class Store:
             conn.execute("UPDATE settings SET document=? WHERE id=1",(settings.model_dump_json(),))
         return settings
 
-    def reserve_segment(self,session_id:str,body:TextInput,origin:str,organizer:str):
+    def reserve_segment(self,session_id:str,body:TextInput,origin:str,organizer:str,govern_source=None):
         """Persist source before model work; failed work can be retried with the same request ID."""
         fingerprint = hashlib.sha256(body.text.encode()).hexdigest()
         with self.connection(write=True) as conn:
@@ -248,7 +265,7 @@ class Store:
                     return project,previous,True
                 conn.execute("UPDATE ingestion_jobs SET state='processing',organizer=? WHERE session_id=? AND request_id=?",(organizer,session_id,body.request_id))
                 return project,previous,False
-            segment = Segment(id=str(uuid4()),text=body.text,start_ms=body.start_ms,end_ms=body.end_ms,created_at=now_iso(),request_id=body.request_id,origin=origin)
+            segment = Segment(id=str(uuid4()),text=body.text,start_ms=body.start_ms,end_ms=body.end_ms,created_at=now_iso(),request_id=body.request_id,origin=origin,govern_source=govern_source)
             session.segments.append(segment)
             project.revision += 1
             project.updated_at = now_iso()

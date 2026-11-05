@@ -11,7 +11,9 @@ export function safeSourceUrl(value:string):boolean{try{const u=new URL(value);r
 export function markdown(project:Project,sessionId?:string):string{
  const sessions=sessionId?project.sessions.filter(s=>s.id===sessionId):project.sessions;
  const out=[`# ${project.title}`,project.description,''];
- for(const session of sessions){out.push(`## ${session.title}`,`Datum: ${session.created_at}`,'');
+ for(const session of sessions){out.push(`## ${session.title}`,`Sectie: ${session.section||'Algemeen'}`,`Datum: ${session.created_at}`,'');
+  if(session.page_text)out.push(session.page_text,'');
+  if(session.strokes?.length)out.push(`Deze pagina bevat ${session.strokes.length} penstreken. De tekening blijft bewaard in de JSON-export.`,'');
   for(const type of ['idea','question','action','decision'] as CardType[]){const cards=session.cards.filter(c=>c.type===type&&c.status!=='rejected');if(!cards.length)continue;out.push(`### ${cardLabels[type]}`,'');for(const card of cards){out.push(`- **${card.title}** (${card.manual?'handmatig':card.status==='proposal'?'voorstel':'bewaard'})`, `  ${card.text}`);for(const id of card.source_segment_ids){const segment=session.segments.find(s=>s.id===id);if(segment)out.push(`  Bron ${timecode(segment.start_ms)}: ${segment.text}`)}out.push('')}}
   if(session.segments.length){out.push('### Transcript','');for(const segment of session.segments)out.push(`**${timecode(segment.start_ms)}** ${segment.text}`,'')}
   const jobs=session.research_jobs.filter(j=>j.sources.length);if(jobs.length){out.push('### Onderzoeksbronnen','');for(const job of jobs){out.push(`Zoekvraag: ${job.query}`,'');for(const source of job.sources)out.push(`- ${source.title} — ${source.url}`,`  Geraadpleegd: ${source.retrieved_at}`,`  ${source.excerpt}`,'')}}

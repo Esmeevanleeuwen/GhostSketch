@@ -12,7 +12,8 @@ Edge = {id:string,source:string,target:string,label:string,origin:'manual'|'sugg
 ResearchJob = {id:string,question_card_id:string,query:string,status:'prepared'|'approved'|'documented',sources:Source[],approved_at:string|null}
 Source = {id:string,title:string,url:string,excerpt:string,retrieved_at:string}
 Settings = {organizer:'rules'|'ollama',ollama_model:string,language:'nl',recordings_retained:false}
-Capabilities = {ollama_available:boolean,ollama_models:string[],speech_available:boolean,audio_conversion_available:boolean}
+The legacy recordings_retained field refers only to GhostSketch's own local audio store. Govern archives every accepted audio upload independently; this is not an archive opt-out.
+Capabilities = {ollama_available:boolean,ollama_models:string[],speech_available:boolean,audio_conversion_available:boolean,govern_storage:boolean}
 ProjectSummary = {id:string,title:string,description:string,revision:number,created_at:string,updated_at:string,session_count:number,card_count:number,question_count:number}
 
 ## Routes
@@ -28,13 +29,13 @@ DELETE /api/projects/{id} -> {ok:true}
 POST /api/projects/import body Project -> Project (fresh ids/identity/revision, references preserved)
 PUT /api/settings body Settings -> Settings (validated organizer/model; no arbitrary service URLs)
 POST /api/sessions/{id}/segments body {text:string,request_id:string,start_ms?:0,end_ms?:0} -> {project:Project,session_id:string,organizer:'rules'|'ollama',warnings:string[]} (stores original segment then proposes cards. Idempotent request_id; no duplicates. Respect edits/rejections; never layout existing cards.)
-POST /api/sessions/{id}/audio multipart {file,request_id,start_ms?:0} -> same envelope. Optional loopback whisper.cpp /inference. WAV16kmono supported; other codecs converted with ffmpeg if installed. Maximum25MiB. Temporary files deleted in finally; no recordings retained. Missing service503; unsupported codec422. No cloud speech fallback.
+POST /api/sessions/{id}/audio multipart {file,request_id,start_ms?:0} -> same envelope. Requires writable Govern storage. Archive bytes first, transcribe with local whisper.cpp /inference, commit source transcript to Govern, then ingest linked notes. WAV/M4A/MP3 up to 16 MiB and 30 minutes. Non-WAV requires local ffmpeg. No cloud fallback. A failed transcription or storage completion leaves pending audio in Govern and leaves the notebook unchanged. Repeat successful requests return the existing note; request ID reuse with different bytes or start time returns 409.
 
 Card.proposal_key is optional SHA-256 metadata for the original normalized proposal type/text. The backend sets it for generated cards and preserves it through edits, export and import, so rejected or rewritten proposals do not reappear when fragment boundaries change. Older exports without this field remain valid.
 
 If organization fails after transcription, return HTTP 200 with the preserved transcript, no generated cards and explicit warnings. Do not silently fall back to another organizer. Repeating request_id preserves the confirmed warning outcome and returns the current project version without duplicate work. Transcription failures before text exists return an HTTP error without changing the project.
 
-JSON requests are bounded to 8 MiB. Stored projects are bounded to 7 MiB, including space reserved for UUID rekeying on import. A larger update or source fragment returns 413 without changing the last confirmed snapshot. Pasted text is limited to 50,000 characters; recognized audio transcripts to 100,000 characters. Audio uploads are limited to 25 MiB.
+JSON requests are bounded to 8 MiB. Stored projects are bounded to 7 MiB, including space reserved for UUID rekeying on import. A larger update or source fragment returns 413 without changing the last confirmed snapshot. Pasted text is limited to 50,000 characters; recognized audio transcripts to 100,000 characters. Audio uploads are limited to 16 MiB.
 
 Session creation, card/edge edits, transcript adjustments, research jobs, ending sessions are via project PUT. Only frontend mutates these; backend validates whole project and updates revision. Revision conflicts never silently overwrite.
 
@@ -48,4 +49,32 @@ No autonomous web fetch in v0.1. UI creates prepared query from a question. User
 
 ## Frontend behavior
 
-No sample data in a new installation; optional explicit example project button. New session uses crypto.randomUUID and timestamps, added by project PUT. Every change is saved to API, statuses Saving/Saved only after confirmation. Drag persisted onDragStop. Undo bounded session snapshots through project PUT. HTTP409 retains edits and offers reload/export. Import real text routes to /segments; importedJSON routes to /projects/import. Actual JSON/Markdown downloads derived from project/session state. Settings show device access state accurately, mic and speaker separate; capture requires speech_available. Rejected cards retained internally and filtered from board. Session review derived from current data.
+No sample data in a new installation; optional explicit example project button. New session uses crypto.randomUUID and timestamps, added by project PUT. Every change is saved to API, statuses Saving/Saved only after confirmation. Drag persisted onDragStop. Undo bounded session snapshots through project PUT. HTTP409 retains edits and offers reload/export. Import real text routes to /segments; importedJSON routes to /projects/import. Actual JSON/Markdown downloads derived from project/session state. Settings show device access state accurately, mic and speaker separate; capture requires speech_available and govern_storage. Rejected cards retained internally and filtered from board. Session review derived from current data.
+
+## Govern notebook extension
+
+`GET /api/govern/recordings` returns `{configured,writable,recordings}` through the server-only
+Govern storage connection. Unconfigured returns an empty list and `configured:false`;
+configured but unavailable/unauthorized returns an explicit adapter error.
+`POST /api/projects/{project_id}/govern/{recording_id:uuid}` requires the normal
+GhostSketch token. A pending recording is fetched as audio, checksum-verified,
+transcribed locally and completed in Govern. A ready recording is reused. Both
+paths return the existing import envelope. A repeated import opens the same page and deduplicates fragments
+by connection/recording checksum/fragment identity. It never rewrites edited notes.
+The server validates recording identity, sequence, timeline, content and response
+size. The fixed `.env` address must be loopback HTTP with path
+`/ghostsketch-storage.php`; redirects and environment proxies are disabled. Legacy
+`/dictation-feed.php` supports only ready transcript reads. The storage token is
+never returned to the browser. A source with older partial segments is preserved
+and returns 409; complete older multi-segment sources remain importable through
+the recordings route.
+
+Session adds `section:string='Algemeen'`, `page_text:string=''` (100,000 characters),
+`strokes:Stroke[]=[]` (500), `govern_recording:string|null=null`, and source `govern`.
+Stroke is `{id,points:[{x,y}]}` with 2–2000 finite points using existing Position
+bounds. Segment adds origin `govern` and optional `govern_source` with connection,
+recording_id, segment_id and audio_sha256. PUT preserves immutable linked originals;
+corrections belong in page_text. Project revision conflicts apply to all page/ink
+edits. JSON export/import rekeys stroke IDs and preserves external provenance.
+The existing 7 MiB project limit remains in force. The first version imports on
+explicit selection, not background polling. Browser/API numeric types are numbers.

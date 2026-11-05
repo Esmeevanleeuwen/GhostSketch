@@ -45,3 +45,22 @@ De lokale tests maakten uitsluitend eigen tijdelijke testgegevens; gebruikersgeg
 ## Windows-installatie
 
 De Python-detectie heeft afzonderlijke Node-tests voor een oude standaardlauncher met een beschikbare Python 3.12, een werkende of kapotte bestaande virtuele omgeving, Microsoft Store-aliassen, timeouts, ontbrekende commando’s en executablepaden met spaties. De GitHub-controle draait setup, tests en build op Ubuntu en Windows met Python 3.12.
+
+## GhostSketch capture with Govern storage
+
+This revision moves recording/import, transcription and linking into GhostSketch;
+Govern stores original audio and transcripts. Validation:
+
+- 65 Python tests passed, including archive-before-model order, saved sources after
+  transcription/completion failures, retry via Opnames, checksum verification,
+  idempotent successful uploads and rejecting a read-only storage connection for audio.
+- 13 frontend tests, 11 launcher tests, TypeScript and the production build passed.
+- Chromium with synthetic storage/model boundaries and real HTTP/SQLite passed audio
+  import in GhostSketch, pending-recording processing, automatic linked notes, page
+  edits, ink and repeat opening. No horizontal overflow at 1440/768/375 or page errors.
+- Govern PHP syntax and real ffmpeg decoding tests passed. PGlite exercised storage
+  schema, permissions, repeated transcript-size migration and size constraints.
+
+No real Whisper model, physical microphone/iPhone, Docker/Windows provisioner or full
+native PHP/PDO/PostgreSQL chain was exercised. Fixtures test the integration contract,
+not speech recognition quality or a deployed installation. Tests need no user audio.
