@@ -65,7 +65,7 @@ Stel in je GhostSketch-`.env` `GHOSTSKETCH_GOVERN_URL` in op
 `http://127.0.0.1:8080/dictation-feed.php` en `GHOSTSKETCH_GOVERN_TOKEN` op dezelfde
 willekeurige sleutel van minimaal 32 tekens als Govern's `GHOSTSKETCH_READ_TOKEN`.
 Herstart GhostSketch. De sleutel blijft bij de backend en komt niet in de browser.
-Zie [Govern-inrichting](https://github.com/Esmeevanleeuwen/govern/blob/feature/dictation-source-api/docs/DICTATION.md).
+Zie [Govern-inrichting](https://github.com/Esmeevanleeuwen/govern/blob/feature/dictation-sources/docs/DICTATION.md).
 
 Open een notitieboek en kies **Uit Govern**. Kies een volledig verwerkt transcript;
 GhostSketch maakt een pagina met automatische voorstellen en bronverwijzingen.
